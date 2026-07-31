@@ -229,6 +229,67 @@ AQS 核心数据结构：
 | **两阶段终止** | 终止前先做清理工作 | Thread.interrupt() | 优雅终止线程 |
 | **生产者-消费者** | 通过队列解耦生产消费 | BlockingQueue | 流水线思想 |
 
+#### ThreadLocal 详解（课程第30讲，面试高频）
+
+**核心思想**："没有共享，就没有伤害"——既然共享变量会引发并发问题，干脆每个线程持有自己的副本。
+
+**使用方式**：
+```java
+private static final ThreadLocal<SimpleDateFormat> dateFormat =
+        ThreadLocal.withInitial(() -> new SimpleDateFormat("yyyy-MM-dd"));
+
+// 每个线程第一次 get 时调用 initialValue() 创建自己的副本
+// 线程间互不干扰，无需加锁
+```
+
+**底层原理**：
+```
+每个 Thread 对象内部持有一个 ThreadLocalMap
+ThreadLocal 对象本身作为 key，线程独享的值作为 value
+
+Thread
+  └── ThreadLocalMap
+        ├── Entry(key=ThreadLocal弱引用, value=线程独享值)
+        ├── Entry(...)
+        └── ...
+```
+
+关键设计：**ThreadLocalMap 属于 Thread 而不是反过来**——因为如果 Map 属于 ThreadLocal（静态全局的），所有线程共享一个 Map 还得加锁；现在每个线程自己的 Map，天然线程隔离。
+
+**内存泄漏（最常考）**：
+```
+泄漏原因：
+  Entry 的 key 是 ThreadLocal 的弱引用（WeakReference）
+  当外部强引用 ThreadLocal 被回收后，key 变为 null
+  但 value 仍然被 Thread 强引用（线程存活 → ThreadLocalMap 存活 → value 存活）
+
+危险场景：线程池！线程长期存活，value 永远无法回收 → 内存泄漏
+
+解决：用完必须 remove()
+  try {
+      // 使用 ThreadLocal
+  } finally {
+      threadLocal.remove();   // ★ 一定要在 finally 里 remove
+  }
+```
+
+**InheritableThreadLocal**：子线程继承父线程的值。
+**注意**：不要和线程池混用——子线程的值是创建时从父线程复制的，线程池复用线程会拿到旧值。
+
+**典型应用**（Spring 事务管理）：
+```
+Spring 把数据库连接放到 ThreadLocal 中
+同一线程内的多个 DAO 操作共享同一个 Connection → 保证同一个事务
+注意：@Async 异步方法会切换线程 → ThreadLocal 里的连接丢失 → 事务失效
+```
+
+**面试回答**：
+> Q：ThreadLocal 的原理和内存泄漏问题？
+>
+> ThreadLocal 的核心是"没有共享就没有伤害"——每个线程在它的 Thread 对象里持有一个 ThreadLocalMap，ThreadLocal 作为 key，线程独享的值作为 value，所以天然线程安全。Spring 用它保存数据库连接实现事务。
+>
+> 内存泄漏是它的经典问题：ThreadLocalMap 的 Entry key 是**弱引用**，当外部不再持有 ThreadLocal 时 key 变 null，但 value 仍被线程强引用——尤其在**线程池**中线程长期存活，value 永远回收不了。所以使用后必须在 finally 里调用 `remove()` 清除。
+
 ---
 
 ### 六、案例分析
