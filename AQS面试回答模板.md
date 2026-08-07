@@ -157,18 +157,72 @@
 
 ---
 
-## 🎙️ 十、Condition 的原理？await/signal 做了什么？
+## 🎙️ 十、Condition 的原理？await/signal 做了什么？条件队列和同步队列什么关系？
 
-**回答结构：独立等待队列 → await 的三步 → signal 的两步 → 与 wait/notify 对比**
+**回答结构：两条队列 → await/signal 各做什么 → 为什么这么设计 → 怎么用**
 
 **话术：**
-> "Condition 是 AQS 的内部类 `ConditionObject`，每个 Condition 维护**一条独立的单向等待队列**（firstWaiter/lastWaiter），和 AQS 的同步队列是两条不同的队列。
+> "AQS 里其实有**两条队列**：**同步队列**（抢锁失败者的等待区，管互斥）和**条件队列**（持锁者主动让位、等条件满足的等待区，管条件）。两者用同一个 Node 类，靠 `waitStatus == CONDITION` 标识当前在条件队列。
 >
-> **`await()` 做三件事**：① 把当前线程包装成节点**加入条件等待队列**；② **释放当前持有的锁**（把 state 释放掉，不然别的线程进不来）；③ `park` 阻塞。
+> **`await()` 做三件事**：① 构造节点（waitStatus=CONDITION）**加入条件等待队列**；② **释放当前持有的锁**（`fullyRelease`，把可重入计数 state 整个释放并保存）；③ `park` 阻塞。
 >
-> **`signal()` 做两件事**：① 把条件等待队列的**队首节点转移回 AQS 同步队列**；② 它不会立即唤醒，而是等那个线程在同步队列里**重新参与竞争拿到锁**才真正继续执行。`signalAll` 就是全转移。
+> **`signal()` 做两件事**：① 把条件队列**队首节点转移回 AQS 同步队列**（`enq()`）；② **不立即唤醒**——节点回到同步队列公平排队，真正被 unpark 要等锁释放后由前驱唤醒、重新抢到锁。`signalAll` 就是全转移。
 >
-> 所以 await/signal 的关键是：**await 释放锁、signal 把节点挪回同步队列**，和 Object.wait/notify 语义一致，但更强大——**一个锁可以配多个 Condition**（比如有界队列的'不满'和'不空'两个条件），还支持**超时 await(nanos) 和可中断**。"
+> 为什么这样设计：**语义必须分离**——一把锁既要管互斥、又要管'条件满足'；多个 Condition 才能**精确唤醒**（有界队列的'不满/不空'两个条件），这正是管程的条件变量机制。
+>
+> 和 Object.wait/notify 对比：**一个锁配多个 Condition**、支持**超时 await(nanos)** 和**可中断 awaitInterruptibly**，更精确。"
+
+### ① 两条队列对比（追问常考）
+
+| 维度 | AQS 同步队列 | Condition 条件等待队列 |
+|------|-------------|----------------------|
+| 谁在排队 | 抢锁失败的线程 | 已持锁、await 主动让位的线程 |
+| 管什么 | 互斥（谁能拿锁） | 条件（条件满足没有） |
+| 被谁唤醒 | 前驱释放锁 → unpark | 条件满足 → signal() |
+| 结构 | 双向链表（prev/next） | 单向链表（nextWaiter） |
+| 数量 | 每把锁一条 | 一个 Condition 一条，可多条 |
+| 节点状态 | SIGNAL / CANCELLED | CONDITION(-2) |
+
+### ② 怎么用（生产者-消费者，三条铁律）
+
+```java
+Lock lock = new ReentrantLock();
+Condition notFull  = lock.newCondition();  // 生产者等"不满"
+Condition notEmpty = lock.newCondition();  // 消费者等"不空"
+
+lock.lock();
+try {
+    while (queue.isFull()) {  // ① while 防虚假唤醒
+        notFull.await();      // ② 条件不满足：让出锁，睡觉
+    }
+    enqueue(item);
+    notEmpty.signal();        // ③ 唤醒一个消费者
+} finally {
+    lock.unlock();
+}
+```
+
+- **铁律一**：await/signal 必须在 `lock()/unlock()` 之间（持锁调用，否则抛 IllegalMonitorStateException）
+- **铁律二**：await 用 `while` 不用 `if`——**防虚假唤醒**，且 await 返回后必须**重新检查条件**
+- **铁律三**：signal 只是把节点挪回同步队列排队，**真正唤醒要等它重新抢到锁**
+
+### ③ await/signal 完整时序
+
+```
+生产线程持锁，发现队列满
+  → notFull.await()
+      ├─ 节点(CONDITION) 加入 notFull 条件队列
+      ├─ 释放锁（保存可重入计数 savedState）
+      └─ park 阻塞
+消费线程持锁，取走元素
+  → notEmpty.signal()
+      ├─ notFull 队首节点 → enq() 转回同步队列
+      └─ 节点与其他抢锁线程公平排队
+消费线程 unlock() → unparkSuccessor 唤醒它
+  → 生产线程抢到锁 → await 返回 → while 再检查队列是否还满
+```
+
+> 📌 一句话记忆：**同步队列管"谁有资格进"，条件队列管"条件有没有满足"；signal 不是叫醒，是把睡着的节点送回抢锁队伍。** `ArrayBlockingQueue` 底层就是 `ReentrantLock + notEmpty/notFull 两条 Condition`。
 
 ---
 
