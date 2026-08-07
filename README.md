@@ -6,6 +6,7 @@
 
 | 日期 | 文档 | 主题 |
 |------|------|------|
+| 2026-08-07 | [线程池源码解析](线程池源码解析.md) | 线程池：execute 四级流程/ctl 位打包/Worker 复用/runWorker/getTask/拒绝策略/生命周期 |
 | 2026-08-07 | [AQS面试回答模板](AQS面试回答模板.md) | AQS：state+CLH队列+模板方法、独占/共享、公平/非公平、Condition、逐题话术 |
 | 2026-07-31 | [撮合引擎核心技术与实战](撮合引擎核心技术与实战.md) | 撮合原理/订单簿/高并发架构/持久化/头部交易所对比/CoinTrader代码实战 |
 | 2026-07-31 | [撮合引擎一页纸速览](撮合引擎一页纸速览.md) | 撮合一页纸：架构图/三代演进/性能数字/面试金句，面试前速记 |
@@ -34,6 +35,7 @@
 | [Spring Cloud与Spring Cloud Alibaba](Spring%20Cloud与Spring%20Cloud%20Alibaba.md) | 微服务组件：Eureka/Nacos/Feign/Gateway/Sentinel |
 | [分布式系统原理与算法](分布式系统原理与算法.md) | 分布式：共识/一致性/存储/调度 |
 | [AQS面试回答模板](AQS面试回答模板.md) | AQS：面试逐题话术、state/CLH队列/CAS、独占/共享、公平锁、Condition、可重入 |
+| [线程池源码解析](线程池源码解析.md) | 线程池源码：execute/addWorker/runWorker/getTask、ctl位打包、Worker继承AQS、拒绝策略、生命周期 |
 | [Java并发与系统性能优化](Java并发与系统性能优化.md) | Java并发：锁/线程池/AQS/性能调优 |
 | [深入拆解Java虚拟机](深入拆解Java虚拟机.md) | JVM：内存模型/GC/类加载/调优 |
 | [深入剖析Java新特性](深入剖析Java新特性.md) | Java新特性：Lambda/Stream/模块化 |
