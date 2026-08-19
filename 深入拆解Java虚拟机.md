@@ -331,12 +331,25 @@ volatile 读操作：
 
 ### 4. 内存屏障
 
+**内存屏障（Memory Barrier / Fence）是什么？**：它是 JVM 在生成机器码时插入的一道“顺序检查线”。屏障限制编译器和 CPU 把屏障两侧的内存读写重排序，并让一个线程在屏障前的写入能按 Java 内存模型的规则被其他线程看见。
+
+它**不是锁**，不会阻塞其他线程；也**不让复合操作自动具备原子性**。它解决的是“可见性 + 有序性”。例如线程 A 先写 `data=42`，再把 `volatile ready=true` 发布出去；线程 B 读到 `ready=true` 后，必须也能读到 `data=42`，不能看到 `ready=true` 却仍读到旧的 `data`。
+
 | 屏障类型 | 作用 |
 |---------|------|
 | **读读屏障** (LoadLoad) | 屏障前的读操作先于屏障后的读 |
 | **写写屏障** (StoreStore) | 屏障前的写操作先于屏障后的写 |
 | **读写屏障** (LoadStore) | 屏障前的读先于屏障后的写 |
-| **写读屏障** (StoreLoad) | **X86_64 上唯一有实际指令的**，屏障前的写先于屏障后的读 |
+| **写读屏障** (StoreLoad) | 屏障前的写先于屏障后的读；通常是四种屏障中开销最重的一种 |
+
+**与 `volatile` 的关系**：JMM 要求 volatile 写具有“发布”效果、volatile 读具有“获取”效果。可把它理解为：
+
+```text
+线程 A：普通写 data=42  → StoreStore → volatile 写 ready=true
+线程 B：volatile 读 ready=true → LoadLoad / LoadStore → 普通读 data
+```
+
+因此，A 对 `ready` 的 volatile 写，**happens-before** B 后续读到该值的 volatile 读；B 便能看到 A 在发布前对 `data` 的写入。具体会生成哪些 CPU 指令取决于硬件架构和 JDK 实现：x86 内存模型较强，部分屏障可能只需编译器约束，而较强的 StoreLoad 屏障通常需要额外的机器指令。
 
 ### 5. 面试回答
 
