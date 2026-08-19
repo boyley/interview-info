@@ -248,7 +248,9 @@ max.poll.interval.ms 调大       # 超过最大下游处理时间
 
 **ISR（In-Sync Replicas）**：与 Leader 保持同步的副本集合，Leader 永远在 ISR 中。
 
-**同步判据不是消息数量，而是时间**：`replica.lag.time.max.ms`（默认 **10s**）——Follower 落后 Leader 超过 10s 被踢出 ISR，可重新加入（动态集合）。
+**同步判据不是消息数量，而是时间**：`replica.lag.time.max.ms` 是 Leader 判断 Follower 是否仍同步的最长容忍时间。Follower 在该时间内必须持续向 Leader 发起 Fetch 请求并追平 Leader 的日志末尾（LEO）；未发 Fetch 或一直未追平，Leader 就将它移出 ISR。恢复并追平后可重新加入（ISR 是动态集合）。
+
+> 📝 **默认值与取舍**：旧版 Kafka 的默认值为 **10s**；当前 Kafka 默认 **30s**。阈值较小，故障发现更快，但短暂网络抖动也更容易造成 ISR 缩小、使 `acks=all` 写入失败；阈值较大则相反。
 
 **Unclean Leader 选举**：选非 ISR 副本当 Leader → 可能丢数据但保可用性（CAP 取舍），`unclean.leader.election.enable=false`。
 
@@ -328,7 +330,7 @@ Purgatory：缓存延迟请求（如 acks=all 等待 ISR 确认）
 | **Kafka 怎么保证不丢消息？** | 生产者 callback+acks=all；Broker replication.factor≥3+min.insync.replicas>1；消费者先消费后提交手动提交 |
 | **Kafka 为什么快？** | 顺序写 + 零拷贝 + PageCache + 批量发送 |
 | **Follower 为什么不服务读？** | 好实现自读自写和单调读 |
-| **ISR 怎么判断同步？** | 不是消息数，是 `replica.lag.time.max.ms`（默认10s） |
+| **ISR 怎么判断同步？** | 不是消息数；Follower 必须在 `replica.lag.time.max.ms` 内持续 Fetch 并追平 Leader 的 LEO，否则移出 ISR（旧版默认10s，当前默认30s） |
 | **幂等生产者和事务生产者区别？** | 幂等保证单分区单会话；事务保证跨分区跨会话 |
 | **重平衡什么时候触发？** | 成员数/订阅主题数/分区数变化；有STW缺点 |
 | **位移提交最佳实践？** | 平时异步 commitAsync，关闭前 commitSync |
