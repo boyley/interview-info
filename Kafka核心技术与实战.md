@@ -233,6 +233,17 @@ Kafka 60%+ 的性能问题出在带宽
 
 > 📝 **面试一句话**：Rebalance 本身不丢消息；“先提交后处理”会丢消息，“先处理后提交”会带来重复消费。
 
+**副本未同步时又发生 Rebalance 呢？**：副本同步和消费者 Rebalance 是两套独立机制。Rebalance 只重新决定“哪个消费者消费哪个分区”，消费者仍从分区 Leader 拉取消息；因此，Follower 落后但 Leader 正常时，重平衡不会因此丢消息，未提交 Offset 的消息只会被重新消费。
+
+真正的风险是 **落后副本尚未同步、Leader 又宕机**：
+
+| 配置与状态 | 结果 |
+|------------|------|
+| `acks=all` + 合理的 `min.insync.replicas` + `unclean.leader.election.enable=false` | 只允许 ISR 副本当新 Leader；若没有可选 ISR，分区暂时不可用，优先保证已确认消息不丢 |
+| `acks=1`，或 `unclean.leader.election.enable=true` | 落后的副本可能成为新 Leader；它未同步到的消息可能丢失 |
+
+> 📝 **记忆**：Rebalance 决定“谁来消费”，副本/ISR 决定“消息是否安全”。
+
 **避免非必要重平衡**：
 ```
 session.timeout.ms = 6s
