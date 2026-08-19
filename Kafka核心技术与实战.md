@@ -120,7 +120,7 @@ Kafka 60%+ 的性能问题出在带宽
 | 环节 | 丢失原因 | 解决 |
 |------|---------|------|
 | **生产者→Broker** | `send(msg)` 是 fire-and-forget | 用 `send(msg, callback)` 检测失败 |
-| **Broker 内** | Leader 崩了没复制 | `acks=all` + `replication.factor≥3` |
+| **Broker 内** | Leader 崩了没复制 | `acks=all` + `replication.factor≥3`（每个分区至少 3 个副本：1 个 Leader + 2 个 Follower） |
 | **消费者** | 先提交位移再消费 | 先消费后提交，手动提交 |
 
 **不丢消息最佳实践清单**：
@@ -129,7 +129,7 @@ Kafka 60%+ 的性能问题出在带宽
 ② acks = all                     # 所有副本确认
 ③ retries 设大
 ④ unclean.leader.election.enable = false
-⑤ replication.factor >= 3
+⑤ replication.factor >= 3          # 副本因子；每个分区至少保留 3 份副本（1 Leader + 2 Follower），可容忍最多 2 台承载该分区副本的 Broker 故障
 ⑥ min.insync.replicas > 1        # 不要用默认1
 ⑦ replication.factor = min.insync.replicas + 1
 ⑧ enable.auto.commit = false     # 手动提交位移
